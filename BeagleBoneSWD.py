@@ -1,0 +1,222 @@
+from SWDErrors import *
+import time
+# --- BeagleBoneSWD
+# Use of BeableBone GPIO to pilot SWD signal
+# (c) Paul Pinault - www.disk91.com
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+# Usage :
+#    GPIO48 is connected to SWD_CLK signal
+#    GPIO60 is connected to SWD_IO signal
+#
+# Add in the header of the existing files
+#    from BeagleBoneSWD import *
+# Modify existing files to use BeagleBoneSWD :
+#    busPirate = PirateSWD("/dev/ttyUSB0")
+#    busPirate = BeagleBoneSWD("")
+#
+class BeagleBoneSWD:
+    def __init__ (self,notused, vreg):
+        self.basedirectory="/sys/class/gpio/"
+        self.swd_io="60"
+        self.swd_clk="48"
+        self.swd_io_dir=self.basedirectory+"gpio"+self.swd_io+"/"
+        self.swd_clk_dir=self.basedirectory+"gpio"+self.swd_clk+"/"
+        self.debug = False
+        self.debugFull = False
+
+        self.swdiopin_e = open(self.basedirectory + "export","w")
+        self.swdiopin_e.write(self.swd_io+"\n")
+        self.swdiopin_e.write(self.swd_clk+"\n")
+        #self.swdiopin_e.close()
+
+        self.swdiopin = open(self.swd_io_dir + "direction","w")
+        self.swdiopin.write("low\n")
+        self.swdiopin.close()
+        self.swdcpin = open(self.swd_clk_dir + "direction","w")
+        self.swdcpin.write("high")
+        self.swdcpin.close()
+        self.sendBytes([0xFF] * 8)
+        self.sendBytes([0x00] * 8)
+        self.sendBytes([0xFF] * 8)
+        self.sendBytes([0x79, 0xE7]) # activate SWD interface
+        self.resyncSWD()
+
+    def resetBP (self):
+            print "DEBUG : resetBP"
+
+    def tristatePins (self):
+            print "DEBUG : tristatePins"
+
+    # this is the fastest port-clearing scheme I could devise
+    def clear (self, more = 0):
+            print "DEBUG : clear"
+
+    def short_sleep(self):
+        time.sleep(0.0001)
+
+    def readBits (self, count):
+        self.swdiopin = open(self.swd_io_dir + "direction","w")
+        self.swdiopin.write("in")
+        self.swdiopin.close()
+        ret = []
+        for x in xrange(0, count):
+           self.swdcpin = open(self.swd_clk_dir + "value","w")
+           self.swdcpin.write("1\n")
+           self.swdcpin.close()
+           self.short_sleep()
+           self.swdcpin = open(self.swd_clk_dir + "value","w")
+           self.swdcpin.write("0\n")
+           self.swdcpin.close()
+           self.swdiopin = open(self.swd_io_dir + "value","r")
+           ret.append(int(self.swdiopin.read()))
+           self.swdiopin.close();
+           self.short_sleep()
+        self.swdiopin = open(self.swd_io_dir + "direction","w")
+        self.swdiopin.write("low")
+        self.swdiopin.close()
+        if self.debug:
+           print "DEBUG - readBits(%d)" % count + "values - %s" %ret
+        return ret
+
+    def sendBits ( self, bits ):
+           for b in bits:
+                    self.swdiopin = open(self.swd_io_dir + "value","w")
+                    if b == 0 :
+                       self.swdiopin.write("0\n")
+                       if self.debugFull:
+                          print "DEBUG - writeBits 0"
+                    else:
+                       self.swdiopin.write("1\n")
+                       if self.debugFull:
+                          print "DEBUG - writeBits 1"
+                    self.swdiopin.close();
+                    self.swdcpin = open(self.swd_clk_dir + "value","w")
+                    self.swdcpin.write("1\n")
+                    self.swdcpin.close()
+                    self.short_sleep()
+                    self.swdcpin = open(self.swd_clk_dir + "value","w")
+                    self.swdcpin.write("0\n")
+                   self.swdcpin.close()
+                    self.short_sleep()
+
+    def skipBits (self, count):
+        if self.debug:
+           print "DEBUG - skipBits(%d)" % count
+        self.readBits (count)
+
+    def readBytes (self, count):
+        ret = []
+        for x in xrange(0, count):
+                v = self.readBits(8)
+                k = 0
+                for i in v:
+                        k = 2*k + i
+                ret.append(k);
+        if self.debug:
+           print "DEBUG - readBytes : %s " % ret
+        return ret
+
+    def sendBytes (self, data):
+        if self.debug:
+           print "DEBUG - sendBytes %s" % data
+        for v in data:
+                db = [int(( v >> y) & 1) for y in range(7,-1, -1)]
+                self.sendBits(db)
+                #self.sendBits(db[::-1])
+
+    def resyncSWD (self):
+        self.sendBytes([0xFF] * 8)
+        self.sendBytes([0x00] * 8)
+
+    def readSWD (self, ap, register):
+        if self.debug:
+           print "DEBUG - readSWD %s " % [calcOpcode(ap, register, True)]
+        # transmit the opcode
+        self.sendBytes([calcOpcode(ap, register, True)])
+        # check the response
+        ack = self.readBits(3)
+        if ack[0:3] != [1,0,0]:
+            if   ack[0:3] == [0,1,0]:
+                raise SWDWaitError(ack[0:3])
+            elif ack[0:3] == [0,0,1]:
+                raise SWDFaultError(ack[0:3])
+            else:
+                raise SWDProtocolError(ack[0:3])
+        # read the next 4 bytes
+        data = [reverseBits(b) for b in self.readBytes(4)]
+        data.reverse()
+        # read the parity bit and turnaround period
+        extra = self.readBits(3)
+        # check the parity
+        if sum([bitCount(x) for x in data[0:4]]) % 2 != extra[0]:
+            raise SWDParityError()
+        # idle clocking to allow transactions to complete
+        self.sendBytes([0x00])
+        self.sendBytes([0x00])
+        # return the data
+        return (data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3]
+
+    def writeSWD (self, ap, register, data, ignoreACK = False):
+        if self.debug:
+           print "DEBUG - writeSWD %s " % [calcOpcode(ap, register, False)]
+        # transmit the opcode
+        self.sendBytes([calcOpcode(ap, register, False)])
+        # check the response if required
+        if ignoreACK:
+            self.skipBits(5)
+        else:
+            ack = self.readBits(5)
+            #print ack
+            if ack[0:3] != [1,0,0]:
+                if ack[0:3] == [0,1,0]:
+                    raise SWDWaitError(ack[0:3])
+                elif ack[0:3] == [0,0,1]:
+                    raise SWDFaultError(ack[0:3])
+                else:
+                    raise SWDProtocolError(ack[0:3])
+        # mangle the data endianness
+        payload = [0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+        payload[0] = reverseBits((data >>  0) & 0xFF)
+        payload[1] = reverseBits((data >>  8) & 0xFF)
+        payload[2] = reverseBits((data >> 16) & 0xFF)
+        payload[3] = reverseBits((data >> 24) & 0xFF)
+        # add the parity bit
+        if sum([bitCount(x) for x in payload[0:4]]) % 2:
+            payload[4] = 0x80
+        # output the data, idle clocking is on the end of the payload
+        self.sendBytes(payload)
+
+def bitCount(int_type):
+    count = 0
+    while(int_type):
+        int_type &= int_type - 1
+        count += 1
+    return(count)
+
+def reverseBits (x):
+    a = ((x & 0xAA) >> 1) | ((x & 0x55) << 1)
+    b = ((a & 0xCC) >> 2) | ((a & 0x33) << 2)
+    c = ((b & 0xF0) >> 4) | ((b & 0x0F) << 4)
+    return c
+
+def calcOpcode (ap, register, read):
+    opcode = 0x00
+    opcode = opcode | (0x20 if read else 0x00)
+    opcode = opcode | (0x40 if ap else 0x00)
+    opcode = opcode | ((register & 0x01) << 4) | ((register & 0x02) << 2)
+    opcode = opcode | ((bitCount(opcode) & 1) << 2)
+    opcode = opcode | 0x81
+    return opcode
