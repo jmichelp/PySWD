@@ -30,8 +30,8 @@ class RpiSWD:
         GPIO.setmode(GPIO.BCM)
         self.SWDIO = 23
         self.SWDCK = 18
-        self.debug = False
-        self.debugFull = False
+        self.debug = True
+        self.debugFull = True
         GPIO.setup(self.SWDIO, GPIO.OUT)
         GPIO.output(self.SWDIO, GPIO.LOW)
         GPIO.setup(self.SWDCK, GPIO.OUT)
