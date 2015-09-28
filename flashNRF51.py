@@ -6,7 +6,7 @@ import array
 
 from PirateSWD import *
 from SWDCommon import *
-from EFM32 import *
+from RpiGPIO import *
 
 def loadFile(path):
     arr = array.array('I')
