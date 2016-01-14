@@ -35,8 +35,8 @@ class PirateSWD:
         if self.port.read(5) != "BBIO1":
             raise SWDInitError("unexpected response from bus pirate")
         if vreg:
-            self.port.write(bytearray([0xc0]))
-        self.port.write(bytearray([0x5f])) # re-enable power, disable all output pins
+            self.port.write(bytearray([0xc0])) # re-enable power
+        self.port.write(bytearray([0x5f])) # disable all output pins
         self.clear(9999)
 
     # this is the fastest port-clearing scheme I could devise
