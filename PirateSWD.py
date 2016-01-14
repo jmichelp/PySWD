@@ -1,9 +1,18 @@
 import serial
+import serial.tools.list_ports
 
 from SWDErrors import *
 
 class PirateSWD:
-    def __init__ (self, f = "/dev/bus_pirate", vreg = False):
+    BUSPIRATE_VID_PID = "04d8:fb00"
+
+    def __init__ (self, f = None, vreg = False):
+        if not f:
+            try:
+                f, _, _ = serial.tools.list_ports.grep(BUSPIRATE_VID_PID).next()
+            except StopIteration:
+                raise SWDInitError("Can't find BusPirate")
+
         self.port = serial.Serial(port = f, baudrate = 115200, timeout = 0.01)
         self.resetBP(vreg = vreg)
         self.sendBytes([0xFF] * 8)
