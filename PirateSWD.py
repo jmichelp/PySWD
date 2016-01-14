@@ -25,12 +25,18 @@ class PirateSWD:
         self.port.write(bytearray([0x63,0x88])) # set speed to 400 kHz, enable output pins
         self.clear(9999)
 
-    def tristatePins(self):
+    def setPower(self, enable=True):
+        self.port.write(bytearray([0x48 if enable else 0x40]))
+        self.port.read(1)
+
+    def tristatePins(self, vreg=False):
         self.clear(9999)
         self.port.write(bytearray([0x00])) # exit RAW mode, unfortunately this kills power and generally resets a bunch of stuff
         if self.port.read(5) != "BBIO1":
             raise SWDInitError("unexpected response from bus pirate")
-        self.port.write(bytearray([0xc0, 0x5f])) # re-enable power, disable all output pins
+        if vreg:
+            self.port.write(bytearray([0xc0]))
+        self.port.write(bytearray([0x5f])) # re-enable power, disable all output pins
         self.clear(9999)
 
     # this is the fastest port-clearing scheme I could devise
